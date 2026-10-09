@@ -19,6 +19,7 @@ The OctoWoW game executable is not launched: this prototype runs in benilla and 
 | Input | Action |
 | --- | --- |
 | Mouse movement | Orbit the action camera and aim |
+| Hold Alt (Windows/Linux) or Command (macOS) | Release the cursor and pause mouse-look; release the key to recapture |
 | W / A / S / D | Move relative to the camera |
 | Space | Jump |
 | Tab or 1 / 2 / 3 | Switch active party member |

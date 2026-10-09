@@ -37,7 +37,13 @@ impl Plugin for DungeonDelverPlugin {
             )
             .add_systems(
                 Update,
-                (control_party, combat, reap_defeated, follow_camera)
+                (
+                    update_pointer_mode,
+                    control_party,
+                    combat,
+                    reap_defeated,
+                    follow_camera,
+                )
                     .chain()
                     .in_set(WorldStage::Input),
             );
@@ -156,6 +162,33 @@ fn capture_pointer(mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>)
     }
 }
 
+/// Holding the platform's window modifier releases the cursor and pauses mouse-look.
+#[cfg(target_os = "macos")]
+fn pointer_release_held(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight])
+}
+
+/// Holding Alt releases the cursor and pauses mouse-look on Windows and Linux.
+#[cfg(not(target_os = "macos"))]
+fn pointer_release_held(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight])
+}
+
+fn update_pointer_mode(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    let release = pointer_release_held(&keys);
+    if let Ok(mut pointer) = pointers.single_mut() {
+        pointer.grab_mode = if release {
+            CursorGrabMode::None
+        } else {
+            CursorGrabMode::Locked
+        };
+        pointer.visible = release;
+    }
+}
+
 fn control_party(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -177,10 +210,12 @@ fn control_party(
     if party.combo_timer == 0.0 {
         party.combo = 0;
     }
-    const MOUSE_SENSITIVITY: f32 = 0.003;
-    party.camera_yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY;
-    party.camera_pitch =
-        (party.camera_pitch + mouse_motion.delta.y * MOUSE_SENSITIVITY).clamp(-0.15, 1.2);
+    if !pointer_release_held(&keys) {
+        const MOUSE_SENSITIVITY: f32 = 0.003;
+        party.camera_yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY;
+        party.camera_pitch =
+            (party.camera_pitch + mouse_motion.delta.y * MOUSE_SENSITIVITY).clamp(-0.15, 1.2);
+    }
     if keys.just_pressed(KeyCode::Digit1) {
         party.active = 0;
     }
@@ -304,6 +339,9 @@ fn combat(
     members: Query<(&PartyMember, &Transform)>,
     mut enemies: Query<(&mut Health, &Transform), With<Enemy>>,
 ) {
+    if pointer_release_held(&keys) {
+        return;
+    }
     let Some((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else {
         return;
     };
