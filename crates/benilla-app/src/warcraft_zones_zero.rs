@@ -21,12 +21,12 @@ const SCARLET_MONASTERY: u32 = 189;
 const START_WOW: [f32; 3] = [855.11, 1320.76, 18.67];
 
 pub(crate) fn active() -> bool {
-    std::env::var_os("WOW_DUNGEON_DELVER").is_some()
+    std::env::var_os("WOW_WARCRAFT_ZONES_ZERO").is_some()
 }
 
-pub(crate) struct DungeonDelverPlugin;
+pub(crate) struct WarcraftZonesZeroPlugin;
 
-impl Plugin for DungeonDelverPlugin {
+impl Plugin for WarcraftZonesZeroPlugin {
     fn build(&self, app: &mut App) {
         // Disable stock glue/UI/controller input; our game layer owns the in-world session.
         app.insert_resource(CaptureMode)

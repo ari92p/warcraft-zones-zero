@@ -52,7 +52,7 @@ mod debug_panel;
 /// is not.
 mod dev;
 mod doodad_events;
-mod dungeon_delver;
+mod warcraft_zones_zero;
 mod entities;
 mod fishing_line;
 mod footprints;
@@ -217,13 +217,13 @@ pub fn run_with(build: BuildId, extend: impl FnOnce(&mut App)) -> AppExit {
 }
 
 /// Launch the offline Scarlet Monastery action prototype on top of the 1.12.1 client.
-pub fn run_dungeon_delver(build: BuildId) -> AppExit {
-    std::env::set_var("WOW_DUNGEON_DELVER", "1");
+pub fn run_warcraft_zones_zero(build: BuildId) -> AppExit {
+    std::env::set_var("WOW_WARCRAFT_ZONES_ZERO", "1");
     std::env::set_var("WOW_MAP", "189");
     launch(
         build,
         Some(Box::new(|app| {
-            app.add_plugins(dungeon_delver::DungeonDelverPlugin);
+            app.add_plugins(warcraft_zones_zero::WarcraftZonesZeroPlugin);
         })),
     )
 }
@@ -426,8 +426,8 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // The game as one group on top of the engine; `game_plugins.rs` has its members, its
     // load-bearing ordering edges and the test that builds it headless.
     .add_plugins(game_plugins::GamePlugins {
-        connect: !capturing && !dungeon_delver::active(),
-        start: if dungeon_delver::active() {
+        connect: !capturing && !warcraft_zones_zero::active(),
+        start: if warcraft_zones_zero::active() {
             char_select::ClientState::InWorld
         } else {
             run_mode::start_state()

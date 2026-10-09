@@ -441,7 +441,7 @@ mod macos {
         mode: Res<super::DisplayedCursor>,
         screen: Res<crate::loading_screen::LoadingScreen>,
         rig: Res<CameraControl>,
-        action_cam: Option<Res<crate::dungeon_delver::ActionCamPointer>>,
+        action_cam: Option<Res<crate::warcraft_zones_zero::ActionCamPointer>>,
         cinematic: Option<Res<crate::cinematic::Cinematic>>,
         mut focus: MessageReader<bevy::window::WindowFocused>,
         // The `Local`s below remember OS state, which outlives the VM, so none is a

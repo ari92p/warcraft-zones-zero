@@ -1,9 +1,9 @@
 [package]
-name = "dungeon-delver"
+name = "warcraft-zones-zero"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Offline Scarlet Monastery action prototype on benilla"
+description = "Warcraft Zones Zero action-combat prototype on benilla"
 
 [lints]
 workspace = true
@@ -21,6 +21,6 @@ benilla-app = { path = "../benilla-app", default-features = false }
 benilla-buildstamp = { path = "../benilla-buildstamp" }
 
 [[bin]]
-name = "dungeon-delver"
+name = "warcraft-zones-zero"
 path = "src/main.rs"
 test = false

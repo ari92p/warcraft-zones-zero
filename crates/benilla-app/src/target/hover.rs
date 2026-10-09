@@ -88,7 +88,7 @@ pub(super) struct PickPose<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct TargetHoverState<'w, 's> {
     /// The action prototype has no pointer-based world interactions.
-    action_cam: Option<Res<'w, crate::dungeon_delver::ActionCamPointer>>,
+    action_cam: Option<Res<'w, crate::warcraft_zones_zero::ActionCamPointer>>,
     /// For `IsSelectable`'s `UNIT_FIELD_CREATEDBY` clause and the pick filter's possession clause.
     self_guid: Res<'w, crate::net::SelfGuid>,
     /// `0x6e61a0`'s pick flag `0x20`, as the frame began.
@@ -487,7 +487,7 @@ fn selectable_pick(
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct GoPickSet<'w, 's> {
     /// The action prototype has no pointer-based world interactions.
-    action_cam: Option<Res<'w, crate::dungeon_delver::ActionCamPointer>>,
+    action_cam: Option<Res<'w, crate::warcraft_zones_zero::ActionCamPointer>>,
     added: Query<'w, 's, (), Added<GoPickPart>>,
     removed: RemovedComponents<'w, 's, GoPickPart>,
     cache: Local<'s, bevy::platform::collections::HashSet<Entity>>,

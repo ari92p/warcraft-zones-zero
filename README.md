@@ -9,7 +9,7 @@ This is a separate game project layered on the benilla client. The client remain
 You need Rust and a local 1.12.1 client data install. To use OctoWoW, point benilla at its `Data` directory:
 
 ```sh
-WOW_DATA="/path/to/OctoWoW/Data" cargo run -p dungeon-delver
+WOW_DATA="/path/to/OctoWoW/Data" cargo run -p warcraft-zones-zero
 ```
 
 The OctoWoW game executable is not launched: this prototype runs in benilla and reads the client's MPQ assets from `Data`. On a development checkout, benilla can also find a `WoW` link in the repository root as described in [`docs/METHOD.md`](docs/METHOD.md). The first startup may take a while while Rust compiles the Bevy client.

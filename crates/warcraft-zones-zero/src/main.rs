@@ -1,7 +1,7 @@
 use benilla_app::BuildId;
 
 fn main() -> benilla_app::AppExit {
-    benilla_app::run_dungeon_delver(BuildId {
+    benilla_app::run_warcraft_zones_zero(BuildId {
         version: env!("CARGO_PKG_VERSION"),
         describe: env!("BENILLA_GIT_DESCRIBE"),
         sha: env!("BENILLA_GIT_SHA"),
