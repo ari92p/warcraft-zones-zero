@@ -29,6 +29,8 @@ The OctoWoW game executable is not launched: this prototype runs in benilla and 
 
 The current slice uses a fixed Scarlet Monastery spawn and a small group of local Scarlet enemies. Combat is local and offline; there is no server, dungeon progression, loot, boss encounter, party selection screen, or character-specific skill kit yet. Those systems will be built as the prototype grows.
 
+The project task list and build order are tracked in [TODO.md](TODO.md).
+
 ## Project direction
 
 The intended loop is a short third-person dungeon run: enter a wing, clear packs, swap characters to chain abilities, and defeat its boss. The first slice is deliberately focused on the feel of movement, camera framing, switching, and hit cadence before adding a full combat and progression model.
