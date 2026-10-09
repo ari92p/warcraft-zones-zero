@@ -1,0 +1,26 @@
+[package]
+name = "warcraft-zones-zero"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Warcraft Zones Zero action-combat prototype on benilla"
+
+[lints]
+workspace = true
+
+[features]
+default = ["dev"]
+dev = ["benilla-app/dev"]
+tracy = ["benilla-app/tracy"]
+trace_chrome = ["benilla-app/trace_chrome"]
+
+[dependencies]
+benilla-app = { path = "../benilla-app", default-features = false }
+
+[build-dependencies]
+benilla-buildstamp = { path = "../benilla-buildstamp" }
+
+[[bin]]
+name = "warcraft-zones-zero"
+path = "src/main.rs"
+test = false
