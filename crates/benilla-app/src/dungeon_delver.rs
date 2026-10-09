@@ -2,15 +2,17 @@
 //! Stock world assets, creature attachment and animation remain owned by benilla.
 
 use benilla_protocol::{messages::ObjectFields, EntityKind};
-use benilla_world::{schedule::WorldStage, view::WorldCamera, world_point::WorldPoint};
-use bevy::input::mouse::AccumulatedMouseMotion;
+use benilla_world::{
+    collision::WorldCollision, schedule::WorldStage, view::WorldCamera, world_point::WorldPoint,
+};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use bevy::{input::mouse::AccumulatedMouseMotion, math::Dir3};
 
 use crate::{
     creature_anim::{move_flags, MovementState},
-    net::{Guid, NetEntity, ObjectStore, ScriptedFacing},
-    player::Player,
+    net::{ActiveMover, Guid, NetEntity, ObjectStore},
+    player::{Player, PlayerCapsule, CAPSULE_HEIGHT},
     run_mode::CaptureMode,
 };
 
@@ -89,24 +91,44 @@ fn wow_to_bevy(p: [f32; 3]) -> Vec3 {
     Vec3::new(-p[1], p[2], -p[0])
 }
 
-fn spawn_unit(commands: &mut Commands, serial: u64, display: u32, pos: Vec3, faction: u32) -> Entity {
+fn spawn_unit(
+    commands: &mut Commands,
+    serial: u64,
+    display: u32,
+    pos: Vec3,
+    faction: u32,
+) -> Entity {
     const HIGH_CREATURE: u64 = 0xF130 << 48;
     let guid = HIGH_CREATURE | serial;
     let fields = ObjectFields::from_pairs(&[
-        (0, guid as u32), (1, (guid >> 32) as u32), (2, 0x9),
-        (4, 1.0f32.to_bits()), (22, 100), (28, 100), (34, 30), (35, faction),
+        (0, guid as u32),
+        (1, (guid >> 32) as u32),
+        (2, 0x9),
+        (4, 1.0f32.to_bits()),
+        (22, 100),
+        (28, 100),
+        (34, 30),
+        (35, faction),
         // Human male, warrior, physical power; scarlet enemies use the same renderable human rig.
         (36, 1 | (1 << 8)),
     ]);
-    commands.spawn((
-        Guid(guid),
-        NetEntity { kind: EntityKind::Unit, display_id: Some(display), scale: 1.0 },
-        ObjectStore(fields), MovementState::default(), ScriptedFacing,
-        Transform::from_translation(pos), Visibility::default(),
-    )).id()
+    commands
+        .spawn((
+            Guid(guid),
+            NetEntity {
+                kind: EntityKind::Unit,
+                display_id: Some(display),
+                scale: 1.0,
+            },
+            ObjectStore(fields),
+            MovementState::default(),
+            Transform::from_translation(pos),
+            Visibility::default(),
+        ))
+        .id()
 }
 
-fn spawn_run(mut commands: Commands, mut map: Option<ResMut<benilla_world::world_map::CurrentMap>>) {
+fn spawn_run(mut commands: Commands, map: Option<ResMut<benilla_world::world_map::CurrentMap>>) {
     if let Some(mut map) = map {
         map.0 = SCARLET_MONASTERY;
     }
@@ -115,7 +137,9 @@ fn spawn_run(mut commands: Commands, mut map: Option<ResMut<benilla_world::world
     for (i, display) in [49, 50, 51].into_iter().enumerate() {
         let pos = origin + Vec3::new((i as f32 - 1.0) * 1.8, 0.0, 2.0 + (i as f32 * 0.4));
         let entity = spawn_unit(&mut commands, 0xD311_000 + i as u64, display, pos, 35);
-        commands.entity(entity).insert((PartyMember(i), Health(100.0)));
+        commands
+            .entity(entity)
+            .insert((PartyMember(i), Health(100.0), ActiveMover));
     }
     for i in 0..4 {
         let pos = origin + Vec3::new((i as f32 - 1.5) * 2.2, 0.0, -8.0 - (i as f32 % 2.0) * 2.5);
@@ -133,9 +157,14 @@ fn capture_pointer(mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>)
 }
 
 fn control_party(
-    time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mouse_motion: Res<AccumulatedMouseMotion>,
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
     world: WorldPoint,
-    mut party: ResMut<Party>, mut player: ResMut<Player>,
+    collision: WorldCollision,
+    capsule: Res<PlayerCapsule>,
+    mut party: ResMut<Party>,
+    mut player: ResMut<Player>,
     mut members: Query<(&PartyMember, &mut Transform, &mut MovementState)>,
 ) {
     let dt = time.delta_secs();
@@ -145,24 +174,46 @@ fn control_party(
         *cooldown = (*cooldown - dt).max(0.0);
     }
     party.combo_timer = (party.combo_timer - dt).max(0.0);
-    if party.combo_timer == 0.0 { party.combo = 0; }
+    if party.combo_timer == 0.0 {
+        party.combo = 0;
+    }
     const MOUSE_SENSITIVITY: f32 = 0.003;
     party.camera_yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY;
-    party.camera_pitch = (party.camera_pitch - mouse_motion.delta.y * MOUSE_SENSITIVITY)
-        .clamp(-0.15, 1.2);
-    if keys.just_pressed(KeyCode::Digit1) { party.active = 0; }
-    if keys.just_pressed(KeyCode::Digit2) { party.active = 1; }
-    if keys.just_pressed(KeyCode::Digit3) { party.active = 2; }
-    if keys.just_pressed(KeyCode::Tab) { party.active = (party.active + 1) % 3; }
+    party.camera_pitch =
+        (party.camera_pitch + mouse_motion.delta.y * MOUSE_SENSITIVITY).clamp(-0.15, 1.2);
+    if keys.just_pressed(KeyCode::Digit1) {
+        party.active = 0;
+    }
+    if keys.just_pressed(KeyCode::Digit2) {
+        party.active = 1;
+    }
+    if keys.just_pressed(KeyCode::Digit3) {
+        party.active = 2;
+    }
+    if keys.just_pressed(KeyCode::Tab) {
+        party.active = (party.active + 1) % 3;
+    }
 
     let forward = Vec3::new(-party.camera_yaw.sin(), 0.0, -party.camera_yaw.cos());
     let right = Vec3::new(forward.z, 0.0, -forward.x);
     let mut dir = Vec3::ZERO;
-    if keys.pressed(KeyCode::KeyW) { dir += forward; }
-    if keys.pressed(KeyCode::KeyS) { dir -= forward; }
-    if keys.pressed(KeyCode::KeyD) { dir += right; }
-    if keys.pressed(KeyCode::KeyA) { dir -= right; }
-    let travel = if dir == Vec3::ZERO { Vec3::ZERO } else { dir.normalize() * 6.0 * dt };
+    if keys.pressed(KeyCode::KeyW) {
+        dir += forward;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        dir -= forward;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        dir += right;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        dir -= right;
+    }
+    let travel = if dir == Vec3::ZERO {
+        Vec3::ZERO
+    } else {
+        dir.normalize() * 6.0 * dt
+    };
     if keys.just_pressed(KeyCode::Space) && party.grounded {
         party.jump_velocity = 7.955_547;
         party.grounded = false;
@@ -170,7 +221,11 @@ fn control_party(
     if !party.grounded {
         party.jump_velocity -= 19.291_105 * dt;
     }
-    let vertical_travel = if party.grounded { 0.0 } else { party.jump_velocity * dt };
+    let vertical_travel = if party.grounded {
+        0.0
+    } else {
+        party.jump_velocity * dt
+    };
     party.facing = if travel == Vec3::ZERO {
         party.camera_yaw
     } else {
@@ -181,19 +236,53 @@ fn control_party(
     let mut landed = false;
     for (member, mut transform, mut movement) in &mut members {
         let selected = member.0 == party.active;
-        transform.translation += travel + Vec3::Y * vertical_travel;
-        movement.speed = if travel == Vec3::ZERO { 0.0 } else { 6.0 };
+        let capsule_center = transform.translation + Vec3::Y * (CAPSULE_HEIGHT * 0.5);
+        let mut safe_travel = collision
+            .cast_mover(&capsule.0, capsule_center, travel, 0.02)
+            .map_or(travel, |hit| {
+                travel.normalize_or_zero() * hit.distance.min(travel.length())
+            });
+        let next_feet = transform.translation + safe_travel;
+        if party.grounded
+            && safe_travel != Vec3::ZERO
+            && collision
+                .ray_body(next_feet + Vec3::Y * 0.2, Dir3::NEG_Y, 0.7)
+                .is_none()
+        {
+            safe_travel = Vec3::ZERO;
+        }
+        let previous_feet = transform.translation;
+        transform.translation += safe_travel + Vec3::Y * vertical_travel;
+        movement.speed = if safe_travel == Vec3::ZERO { 0.0 } else { 6.0 };
         movement.vertical_speed = party.jump_velocity;
-        movement.flags = if travel == Vec3::ZERO { 0 } else { move_flags::FORWARD };
-        if !party.grounded { movement.flags |= move_flags::FALLING; }
+        movement.flags = if safe_travel == Vec3::ZERO {
+            0
+        } else {
+            move_flags::FORWARD
+        };
+        if !party.grounded {
+            movement.flags |= move_flags::FALLING;
+        }
         transform.rotation = Quat::from_rotation_y(party.facing);
-        if let Some(y) = world.terrain_height_under(transform.translation) {
+        let floor_y = world
+            .terrain_height_under(transform.translation)
+            .or_else(|| {
+                let origin = previous_feet + Vec3::Y * 0.1;
+                collision
+                    .ray_body(origin, Dir3::NEG_Y, (-vertical_travel).max(0.0) + 0.2)
+                    .map(|hit| origin.y - hit.distance)
+            });
+        if let Some(y) = floor_y {
             if transform.translation.y <= y {
                 transform.translation.y = y;
-                if selected { landed = true; }
+                if selected {
+                    landed = true;
+                }
             }
         }
-        if selected { active_pos = Some(transform.translation); }
+        if selected {
+            active_pos = Some(transform.translation);
+        }
     }
     if let Some(pos) = active_pos {
         player.active = true;
@@ -209,22 +298,32 @@ fn control_party(
 }
 
 fn combat(
-    time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mouse: Res<ButtonInput<MouseButton>>,
-    mut party: ResMut<Party>, members: Query<(&PartyMember, &Transform)>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut party: ResMut<Party>,
+    members: Query<(&PartyMember, &Transform)>,
     mut enemies: Query<(&mut Health, &Transform), With<Enemy>>,
 ) {
-    let Ok((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else { return; };
-    let dt = time.delta_secs();
-    let special_slot = if keys.just_pressed(KeyCode::KeyQ) { Some(0) }
-        else if keys.just_pressed(KeyCode::KeyE) { Some(1) }
-        else if keys.just_pressed(KeyCode::KeyR) { Some(2) }
-        else { None };
+    let Some((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else {
+        return;
+    };
+    let special_slot = if keys.just_pressed(KeyCode::KeyQ) {
+        Some(0)
+    } else if keys.just_pressed(KeyCode::KeyE) {
+        Some(1)
+    } else if keys.just_pressed(KeyCode::KeyR) {
+        Some(2)
+    } else {
+        None
+    };
     if let Some(slot) = special_slot.filter(|&slot| party.special_cooldowns[slot] == 0.0) {
         party.special_cooldowns[slot] = [7.0, 9.0, 12.0][slot];
         let range = [5.2, 4.0, 6.0][slot];
         let damage = [38.0, 52.0, 65.0][slot];
         for (mut health, target) in &mut enemies {
-            if hero.translation.distance(target.translation) < range { health.0 -= damage; }
+            if hero.translation.distance(target.translation) < range {
+                health.0 -= damage;
+            }
         }
     }
 
@@ -232,7 +331,11 @@ fn combat(
     let heavy_held = mouse.pressed(MouseButton::Right);
     if light_held && party.light_cooldown == 0.0 {
         party.light_cooldown = 0.42;
-        party.combo = if party.combo_timer > 0.0 { party.combo % 3 + 1 } else { 1 };
+        party.combo = if party.combo_timer > 0.0 {
+            party.combo % 3 + 1
+        } else {
+            1
+        };
         party.combo_timer = 1.1;
         let forward = hero.rotation * Vec3::NEG_Z;
         for (mut health, target) in &mut enemies {
@@ -256,7 +359,11 @@ fn combat(
     }
 }
 
-fn reap_defeated(mut commands: Commands, defeated: Query<Entity, (With<Enemy>, With<Health>)>, health: Query<&Health>) {
+fn reap_defeated(
+    mut commands: Commands,
+    defeated: Query<Entity, (With<Enemy>, With<Health>)>,
+    health: Query<&Health>,
+) {
     for entity in &defeated {
         if health.get(entity).is_ok_and(|h| h.0 <= 0.0) {
             commands.entity(entity).despawn();
@@ -265,10 +372,14 @@ fn reap_defeated(mut commands: Commands, defeated: Query<Entity, (With<Enemy>, W
 }
 
 fn follow_camera(
-    party: Res<Party>, members: Query<(&PartyMember, &Transform), Without<WorldCamera>>,
+    party: Res<Party>,
+    members: Query<(&PartyMember, &Transform), Without<WorldCamera>>,
     mut cameras: Query<&mut Transform, With<WorldCamera>>,
+    collision: WorldCollision,
 ) {
-    let Some((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else { return; };
+    let Some((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else {
+        return;
+    };
     let focus = hero.translation + Vec3::Y * 1.4;
     let pitch = party.camera_pitch;
     let offset = Vec3::new(
@@ -277,6 +388,14 @@ fn follow_camera(
         party.camera_yaw.cos() * pitch.cos(),
     ) * 7.0;
     let eye = focus + offset;
+    let head = hero.translation + Vec3::Y * 1.8;
+    let boom = eye - head;
+    let safe_distance = collision
+        .cast_camera(head, boom, false)
+        .map_or(boom.length(), |distance| (distance - 0.15).max(0.0));
+    let eye = head + boom.normalize_or_zero() * safe_distance;
     let transform = Transform::from_translation(eye).looking_at(focus, Vec3::Y);
-    for mut camera in &mut cameras { *camera = transform; }
+    for mut camera in &mut cameras {
+        *camera = transform;
+    }
 }

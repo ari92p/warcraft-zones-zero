@@ -46,13 +46,13 @@ mod creature_type;
 mod cursor;
 mod cvars;
 mod death;
-mod dungeon_delver;
 #[cfg(feature = "dev")]
 mod debug_panel;
 /// The dev/player seam: the instrument groups and the boundary rule. Always compiled; what it holds
 /// is not.
 mod dev;
 mod doodad_events;
+mod dungeon_delver;
 mod entities;
 mod fishing_line;
 mod footprints;

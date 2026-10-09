@@ -8,6 +8,12 @@ description = "Offline Scarlet Monastery action prototype on benilla"
 [lints]
 workspace = true
 
+[features]
+default = ["dev"]
+dev = ["benilla-app/dev"]
+tracy = ["benilla-app/tracy"]
+trace_chrome = ["benilla-app/trace_chrome"]
+
 [dependencies]
 benilla-app = { path = "../benilla-app", default-features = false }
 
