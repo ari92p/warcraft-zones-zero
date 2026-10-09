@@ -168,24 +168,38 @@ fn pointer_release_held(keys: &ButtonInput<KeyCode>) -> bool {
     keys.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight])
 }
 
+#[cfg(target_os = "macos")]
+fn pointer_release_just_released(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.just_released(KeyCode::SuperLeft) || keys.just_released(KeyCode::SuperRight)
+}
+
 /// Holding Alt releases the cursor and pauses mouse-look on Windows and Linux.
 #[cfg(not(target_os = "macos"))]
 fn pointer_release_held(keys: &ButtonInput<KeyCode>) -> bool {
     keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight])
 }
 
+#[cfg(not(target_os = "macos"))]
+fn pointer_release_just_released(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.just_released(KeyCode::AltLeft) || keys.just_released(KeyCode::AltRight)
+}
+
 fn update_pointer_mode(
     keys: Res<ButtonInput<KeyCode>>,
-    mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut windows: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     let release = pointer_release_held(&keys);
-    if let Ok(mut pointer) = pointers.single_mut() {
+    if let Ok((mut window, mut pointer)) = windows.single_mut() {
         pointer.grab_mode = if release {
             CursorGrabMode::None
         } else {
             CursorGrabMode::Locked
         };
         pointer.visible = release;
+        if !release && pointer_release_just_released(&keys) {
+            let center = window.size() * 0.5;
+            window.set_cursor_position(Some(center));
+        }
     }
 }
 
