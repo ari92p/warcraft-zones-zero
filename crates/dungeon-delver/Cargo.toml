@@ -1,0 +1,20 @@
+[package]
+name = "dungeon-delver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline Scarlet Monastery action prototype on benilla"
+
+[lints]
+workspace = true
+
+[dependencies]
+benilla-app = { path = "../benilla-app", default-features = false }
+
+[build-dependencies]
+benilla-buildstamp = { path = "../benilla-buildstamp" }
+
+[[bin]]
+name = "dungeon-delver"
+path = "src/main.rs"
+test = false

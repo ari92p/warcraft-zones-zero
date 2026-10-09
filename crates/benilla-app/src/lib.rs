@@ -46,6 +46,7 @@ mod creature_type;
 mod cursor;
 mod cvars;
 mod death;
+mod dungeon_delver;
 #[cfg(feature = "dev")]
 mod debug_panel;
 /// The dev/player seam: the instrument groups and the boundary rule. Always compiled; what it holds
@@ -213,6 +214,18 @@ pub fn run(build: BuildId) -> AppExit {
 /// `extend` gets the client fully built and runs before the probe fleet, which sees what it adds.
 pub fn run_with(build: BuildId, extend: impl FnOnce(&mut App)) -> AppExit {
     launch(build, Some(Box::new(extend)))
+}
+
+/// Launch the offline Scarlet Monastery action prototype on top of the 1.12.1 client.
+pub fn run_dungeon_delver(build: BuildId) -> AppExit {
+    std::env::set_var("WOW_DUNGEON_DELVER", "1");
+    std::env::set_var("WOW_MAP", "189");
+    launch(
+        build,
+        Some(Box::new(|app| {
+            app.add_plugins(dungeon_delver::DungeonDelverPlugin);
+        })),
+    )
 }
 
 /// The state folder, `benilla-config/`, where a crate on top keeps its own files: an addon it ships
@@ -413,8 +426,12 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // The game as one group on top of the engine; `game_plugins.rs` has its members, its
     // load-bearing ordering edges and the test that builds it headless.
     .add_plugins(game_plugins::GamePlugins {
-        connect: !capturing,
-        start: run_mode::start_state(),
+        connect: !capturing && !dungeon_delver::active(),
+        start: if dungeon_delver::active() {
+            char_select::ClientState::InWorld
+        } else {
+            run_mode::start_state()
+        },
     });
 
     // benilla-assets' loaders go into the live `AssetServer`, so they register after `AssetPlugin`.
