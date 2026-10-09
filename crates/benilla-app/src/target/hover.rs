@@ -87,6 +87,8 @@ pub(super) struct PickPose<'w, 's> {
 /// the picker's param limit.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct TargetHoverState<'w, 's> {
+    /// The action prototype has no pointer-based world interactions.
+    action_cam: Option<Res<'w, crate::dungeon_delver::ActionCamPointer>>,
     /// For `IsSelectable`'s `UNIT_FIELD_CREATEDBY` clause and the pick filter's possession clause.
     self_guid: Res<'w, crate::net::SelfGuid>,
     /// `0x6e61a0`'s pick flag `0x20`, as the frame began.
@@ -101,6 +103,10 @@ pub(super) struct TargetHoverState<'w, 's> {
 }
 
 impl TargetHoverState<'_, '_> {
+    fn pointer_interactions_disabled(&self) -> bool {
+        self.action_cam.is_some()
+    }
+
     /// `0x480610`'s two exclusions, which come first and which a pick whose flags carry `0x20`
     /// skips (`48062c`, [`crate::spell::PicksSelf`]; `0x481050` ORs it in only for a word
     /// `0x6e61a0` passes, so outside targeting they always run): the active player (`480638`),
@@ -229,6 +235,11 @@ pub(super) fn update_hover(
     // The pick's guid and kind; the kind decides which slot of `Hovered` a hit lands in.
     units: Query<(&Guid, &NetEntity)>,
 ) {
+    if target_state.pointer_interactions_disabled() {
+        *hovered = Hovered::default();
+        *last_pick = None;
+        return;
+    }
     hovered.target = None;
     hovered.guid = None;
     hovered.corpse = None;
@@ -475,6 +486,8 @@ fn selectable_pick(
 /// the pick-set cache and the stream edges that rebuild it, the sticky pick and the probe's locals.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct GoPickSet<'w, 's> {
+    /// The action prototype has no pointer-based world interactions.
+    action_cam: Option<Res<'w, crate::dungeon_delver::ActionCamPointer>>,
     added: Query<'w, 's, (), Added<GoPickPart>>,
     removed: RemovedComponents<'w, 's, GoPickPart>,
     cache: Local<'s, bevy::platform::collections::HashSet<Entity>>,
@@ -555,6 +568,11 @@ pub(super) fn update_hovered_object(
     parts: PickParts,
     mut cache: GoPickSet,
 ) {
+    if cache.action_cam.is_some() {
+        *hovered = HoveredObject::default();
+        *cache.last_pick = None;
+        return;
+    }
     *cache.frame = cache.frame.wrapping_add(1);
     let added_parts = &cache.added;
     let removed_parts = &mut cache.removed;

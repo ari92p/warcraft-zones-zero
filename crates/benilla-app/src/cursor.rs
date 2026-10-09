@@ -441,6 +441,7 @@ mod macos {
         mode: Res<super::DisplayedCursor>,
         screen: Res<crate::loading_screen::LoadingScreen>,
         rig: Res<CameraControl>,
+        action_cam: Option<Res<crate::dungeon_delver::ActionCamPointer>>,
         cinematic: Option<Res<crate::cinematic::Cinematic>>,
         mut focus: MessageReader<bevy::window::WindowFocused>,
         // The `Local`s below remember OS state, which outlives the VM, so none is a
@@ -483,7 +484,9 @@ mod macos {
         }
         // A cinematic hides the pointer too (`0x58b590`); `CursorOptions.visible` is inert here, so
         // it joins the look's hide/unhide pair, keeping AppKit's hide counter balanced.
-        let looking = rig.holds_cursor() || cinematic.is_some_and(|c| c.is_playing());
+        let looking = action_cam.is_some_and(|state| state.captured)
+            || rig.holds_cursor()
+            || cinematic.is_some_and(|c| c.is_playing());
         let stem = mode.0.stem();
         // The key names the chosen cursor, so `NSCursor::set`, a WindowServer round-trip that can
         // stall the main thread for milliseconds, fires only on a change or a drift.

@@ -30,6 +30,7 @@ impl Plugin for DungeonDelverPlugin {
     fn build(&self, app: &mut App) {
         // Disable stock glue/UI/controller input; our game layer owns the in-world session.
         app.insert_resource(CaptureMode)
+            .init_resource::<ActionCamPointer>()
             .init_resource::<Party>()
             .add_systems(
                 OnEnter(crate::char_select::ClientState::InWorld),
@@ -56,6 +57,18 @@ struct PartyMember(usize);
 
 #[derive(Component)]
 struct Enemy;
+
+/// The prototype has no world-pointer interactions; the modifier only releases the OS pointer.
+#[derive(Resource)]
+pub(crate) struct ActionCamPointer {
+    pub(crate) captured: bool,
+}
+
+impl Default for ActionCamPointer {
+    fn default() -> Self {
+        Self { captured: true }
+    }
+}
 
 #[derive(Component)]
 struct Health(f32);
@@ -155,7 +168,11 @@ fn spawn_run(mut commands: Commands, map: Option<ResMut<benilla_world::world_map
     info!("Scarlet Monastery loaded. Mouse look, WASD move, Space jump, LMB/RMB attacks, Q/E/R specials.");
 }
 
-fn capture_pointer(mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>) {
+fn capture_pointer(
+    mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut action_cam: ResMut<ActionCamPointer>,
+) {
+    action_cam.captured = true;
     if let Ok(mut pointer) = pointers.single_mut() {
         pointer.grab_mode = CursorGrabMode::Locked;
         pointer.visible = false;
@@ -186,9 +203,11 @@ fn pointer_release_just_released(keys: &ButtonInput<KeyCode>) -> bool {
 
 fn update_pointer_mode(
     keys: Res<ButtonInput<KeyCode>>,
+    mut action_cam: ResMut<ActionCamPointer>,
     mut windows: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     let release = pointer_release_held(&keys);
+    action_cam.captured = !release;
     if let Ok((mut window, mut pointer)) = windows.single_mut() {
         pointer.grab_mode = if release {
             CursorGrabMode::None
