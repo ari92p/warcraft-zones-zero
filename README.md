@@ -18,11 +18,13 @@ On a development checkout, the client can also find the `WoW` link in the reposi
 
 | Input | Action |
 | --- | --- |
-| W / A / S / D | Move the party |
-| Q / E | Turn |
+| Mouse movement | Orbit the action camera and aim |
+| W / A / S / D | Move relative to the camera |
+| Space | Jump |
 | Tab or 1 / 2 / 3 | Switch active party member |
-| Space or left mouse button | Melee combo attack |
-| Shift | Close-range special attack |
+| Hold left mouse button | Repeating light attacks and combo chain |
+| Hold right mouse button | Repeating heavy attacks |
+| Q / E / R | Special attacks |
 
 The current slice uses a fixed Scarlet Monastery spawn and a small group of local Scarlet enemies. Combat is local and offline; there is no server, dungeon progression, loot, boss encounter, party selection screen, or character-specific skill kit yet. Those systems will be built as the prototype grows.
 

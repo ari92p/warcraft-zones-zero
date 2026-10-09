@@ -3,7 +3,9 @@
 
 use benilla_protocol::{messages::ObjectFields, EntityKind};
 use benilla_world::{schedule::WorldStage, view::WorldCamera, world_point::WorldPoint};
+use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::{
     creature_anim::{move_flags, MovementState},
@@ -27,14 +29,17 @@ impl Plugin for DungeonDelverPlugin {
         // Disable stock glue/UI/controller input; our game layer owns the in-world session.
         app.insert_resource(CaptureMode)
             .init_resource::<Party>()
-            .add_systems(OnEnter(crate::char_select::ClientState::InWorld), spawn_run)
+            .add_systems(
+                OnEnter(crate::char_select::ClientState::InWorld),
+                (spawn_run, capture_pointer).chain(),
+            )
             .add_systems(
                 Update,
                 (control_party, combat, reap_defeated, follow_camera)
                     .chain()
                     .in_set(WorldStage::Input),
             );
-        info!("Dungeon Delver: Scarlet Monastery prototype; WASD move, Q/E turn, 1-3 swap, Space attack, Shift special");
+        info!("Warcraft Zones Zero: WASD move, mouse look, Space jump, LMB light, RMB heavy, Q/E/R specials, 1-3 swap");
     }
 }
 
@@ -47,14 +52,37 @@ struct Enemy;
 #[derive(Component)]
 struct Health(f32);
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 struct Party {
     active: usize,
     facing: f32,
-    attack_cooldown: f32,
+    camera_yaw: f32,
+    camera_pitch: f32,
+    light_cooldown: f32,
+    heavy_cooldown: f32,
     combo: u8,
     combo_timer: f32,
-    special_cooldown: f32,
+    special_cooldowns: [f32; 3],
+    jump_velocity: f32,
+    grounded: bool,
+}
+
+impl Default for Party {
+    fn default() -> Self {
+        Self {
+            active: 0,
+            facing: 0.0,
+            camera_yaw: 0.0,
+            camera_pitch: 0.42,
+            light_cooldown: 0.0,
+            heavy_cooldown: 0.0,
+            combo: 0,
+            combo_timer: 0.0,
+            special_cooldowns: [0.0; 3],
+            jump_velocity: 0.0,
+            grounded: true,
+        }
+    }
 }
 
 fn wow_to_bevy(p: [f32; 3]) -> Vec3 {
@@ -94,27 +122,40 @@ fn spawn_run(mut commands: Commands, mut map: Option<ResMut<benilla_world::world
         let entity = spawn_unit(&mut commands, 0xD311_100 + i as u64, 1563, pos, 14);
         commands.entity(entity).insert((Enemy, Health(80.0)));
     }
-    info!("Scarlet Monastery loaded. Prototype controls: WASD, Q/E, 1-3, Space, Shift.");
+    info!("Scarlet Monastery loaded. Mouse look, WASD move, Space jump, LMB/RMB attacks, Q/E/R specials.");
+}
+
+fn capture_pointer(mut pointers: Query<&mut CursorOptions, With<PrimaryWindow>>) {
+    if let Ok(mut pointer) = pointers.single_mut() {
+        pointer.grab_mode = CursorGrabMode::Locked;
+        pointer.visible = false;
+    }
 }
 
 fn control_party(
-    time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, world: WorldPoint,
+    time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mouse_motion: Res<AccumulatedMouseMotion>,
+    world: WorldPoint,
     mut party: ResMut<Party>, mut player: ResMut<Player>,
     mut members: Query<(&PartyMember, &mut Transform, &mut MovementState)>,
 ) {
     let dt = time.delta_secs();
-    party.attack_cooldown = (party.attack_cooldown - dt).max(0.0);
-    party.special_cooldown = (party.special_cooldown - dt).max(0.0);
+    party.light_cooldown = (party.light_cooldown - dt).max(0.0);
+    party.heavy_cooldown = (party.heavy_cooldown - dt).max(0.0);
+    for cooldown in &mut party.special_cooldowns {
+        *cooldown = (*cooldown - dt).max(0.0);
+    }
     party.combo_timer = (party.combo_timer - dt).max(0.0);
     if party.combo_timer == 0.0 { party.combo = 0; }
+    const MOUSE_SENSITIVITY: f32 = 0.003;
+    party.camera_yaw -= mouse_motion.delta.x * MOUSE_SENSITIVITY;
+    party.camera_pitch = (party.camera_pitch - mouse_motion.delta.y * MOUSE_SENSITIVITY)
+        .clamp(-0.15, 1.2);
     if keys.just_pressed(KeyCode::Digit1) { party.active = 0; }
     if keys.just_pressed(KeyCode::Digit2) { party.active = 1; }
     if keys.just_pressed(KeyCode::Digit3) { party.active = 2; }
     if keys.just_pressed(KeyCode::Tab) { party.active = (party.active + 1) % 3; }
 
-    let turn = keys.pressed(KeyCode::KeyE) as i8 as f32 - keys.pressed(KeyCode::KeyQ) as i8 as f32;
-    party.facing += turn * dt * 2.2;
-    let forward = Vec3::new(-party.facing.sin(), 0.0, -party.facing.cos());
+    let forward = Vec3::new(-party.camera_yaw.sin(), 0.0, -party.camera_yaw.cos());
     let right = Vec3::new(forward.z, 0.0, -forward.x);
     let mut dir = Vec3::ZERO;
     if keys.pressed(KeyCode::KeyW) { dir += forward; }
@@ -122,24 +163,35 @@ fn control_party(
     if keys.pressed(KeyCode::KeyD) { dir += right; }
     if keys.pressed(KeyCode::KeyA) { dir -= right; }
     let travel = if dir == Vec3::ZERO { Vec3::ZERO } else { dir.normalize() * 6.0 * dt };
+    if keys.just_pressed(KeyCode::Space) && party.grounded {
+        party.jump_velocity = 7.955_547;
+        party.grounded = false;
+    }
+    if !party.grounded {
+        party.jump_velocity -= 19.291_105 * dt;
+    }
+    let vertical_travel = if party.grounded { 0.0 } else { party.jump_velocity * dt };
+    party.facing = if travel == Vec3::ZERO {
+        party.camera_yaw
+    } else {
+        (-travel.x).atan2(-travel.z)
+    };
 
     let mut active_pos = None;
+    let mut landed = false;
     for (member, mut transform, mut movement) in &mut members {
         let selected = member.0 == party.active;
-        if travel != Vec3::ZERO {
-            transform.translation += travel;
-        }
-        if selected && travel != Vec3::ZERO {
-            party.facing = (-travel.x).atan2(-travel.z);
-            movement.speed = 6.0;
-            movement.flags = move_flags::FORWARD;
-        } else {
-            movement.speed = 0.0;
-            movement.flags = 0;
-        }
+        transform.translation += travel + Vec3::Y * vertical_travel;
+        movement.speed = if travel == Vec3::ZERO { 0.0 } else { 6.0 };
+        movement.vertical_speed = party.jump_velocity;
+        movement.flags = if travel == Vec3::ZERO { 0 } else { move_flags::FORWARD };
+        if !party.grounded { movement.flags |= move_flags::FALLING; }
         transform.rotation = Quat::from_rotation_y(party.facing);
         if let Some(y) = world.terrain_height_under(transform.translation) {
-            transform.translation.y = y;
+            if transform.translation.y <= y {
+                transform.translation.y = y;
+                if selected { landed = true; }
+            }
         }
         if selected { active_pos = Some(transform.translation); }
     }
@@ -150,31 +202,55 @@ fn control_party(
         player.world_stale = false;
         player.pos = pos;
     }
+    if landed {
+        party.grounded = true;
+        party.jump_velocity = 0.0;
+    }
 }
 
 fn combat(
-    keys: Res<ButtonInput<KeyCode>>, mouse: Res<ButtonInput<MouseButton>>,
+    time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mouse: Res<ButtonInput<MouseButton>>,
     mut party: ResMut<Party>, members: Query<(&PartyMember, &Transform)>,
     mut enemies: Query<(&mut Health, &Transform), With<Enemy>>,
 ) {
     let Ok((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else { return; };
-    let special = keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::ShiftRight);
-    let attack = keys.just_pressed(KeyCode::Space) || mouse.just_pressed(MouseButton::Left);
-    if special && party.special_cooldown == 0.0 {
-        party.special_cooldown = 8.0;
+    let dt = time.delta_secs();
+    let special_slot = if keys.just_pressed(KeyCode::KeyQ) { Some(0) }
+        else if keys.just_pressed(KeyCode::KeyE) { Some(1) }
+        else if keys.just_pressed(KeyCode::KeyR) { Some(2) }
+        else { None };
+    if let Some(slot) = special_slot.filter(|&slot| party.special_cooldowns[slot] == 0.0) {
+        party.special_cooldowns[slot] = [7.0, 9.0, 12.0][slot];
+        let range = [5.2, 4.0, 6.0][slot];
+        let damage = [38.0, 52.0, 65.0][slot];
         for (mut health, target) in &mut enemies {
-            if hero.translation.distance(target.translation) < 5.0 { health.0 -= 45.0; }
+            if hero.translation.distance(target.translation) < range { health.0 -= damage; }
         }
-    } else if attack && party.attack_cooldown == 0.0 {
-        party.attack_cooldown = 0.48;
+    }
+
+    let light_held = mouse.pressed(MouseButton::Left);
+    let heavy_held = mouse.pressed(MouseButton::Right);
+    if light_held && party.light_cooldown == 0.0 {
+        party.light_cooldown = 0.42;
         party.combo = if party.combo_timer > 0.0 { party.combo % 3 + 1 } else { 1 };
         party.combo_timer = 1.1;
         let forward = hero.rotation * Vec3::NEG_Z;
         for (mut health, target) in &mut enemies {
-            if hero.translation.distance(target.translation) < 3.2
+            if hero.translation.distance(target.translation) < 3.0
                 && forward.dot((target.translation - hero.translation).normalize_or_zero()) > 0.15
             {
-                health.0 -= 18.0 + 4.0 * f32::from(party.combo);
+                health.0 -= 16.0 + 4.0 * f32::from(party.combo);
+            }
+        }
+    }
+    if heavy_held && party.heavy_cooldown == 0.0 {
+        party.heavy_cooldown = 1.05;
+        let forward = hero.rotation * Vec3::NEG_Z;
+        for (mut health, target) in &mut enemies {
+            if hero.translation.distance(target.translation) < 3.8
+                && forward.dot((target.translation - hero.translation).normalize_or_zero()) > -0.1
+            {
+                health.0 -= 36.0;
             }
         }
     }
@@ -194,7 +270,13 @@ fn follow_camera(
 ) {
     let Some((_, hero)) = members.iter().find(|(m, _)| m.0 == party.active) else { return; };
     let focus = hero.translation + Vec3::Y * 1.4;
-    let eye = focus - hero.rotation * Vec3::NEG_Z * 7.0 + Vec3::Y * 3.2;
+    let pitch = party.camera_pitch;
+    let offset = Vec3::new(
+        party.camera_yaw.sin() * pitch.cos(),
+        pitch.sin(),
+        party.camera_yaw.cos() * pitch.cos(),
+    ) * 7.0;
+    let eye = focus + offset;
     let transform = Transform::from_translation(eye).looking_at(focus, Vec3::Y);
     for mut camera in &mut cameras { *camera = transform; }
 }
