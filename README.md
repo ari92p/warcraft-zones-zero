@@ -1,4 +1,4 @@
-# Warcraft Dungeon Delver
+# Warcraft Zones Zero
 
 A third-person action-combat prototype built on [benilla](https://github.com/samwhosung/benilla), its from-scratch World of Warcraft 1.12.1 client. The prototype starts in Scarlet Monastery and experiments with a three-character party, instant switching, melee combo strings, and a short-range special attack.
 
